@@ -9,7 +9,7 @@ let cgPath = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
 // 配置文件：每行一个要隐藏的应用，可写「应用名」（如 微信 / WeChat / 钉钉）或 bundle id
 // （如 com.tencent.xinWeChat）。# 开头为注释，空行忽略。没配置就什么都不隐藏，由用户自己添加。
 let configPath = NSHomeDirectory() + "/Library/Application Support/ShareHideApps/apps.conf"
-let configAppPath = NSHomeDirectory() + "/Applications/共享隐身.app"
+let configAppPath = NSHomeDirectory() + "/Applications/共享时隐身.app"
 let defaultTargets: [String] = []
 let debounceCount = 2
 let pollInterval: TimeInterval = 1.0
@@ -95,10 +95,10 @@ final class StatusController: NSObject {
     override init() {
         super.init()
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "共享隐身")
+            let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "共享时隐身")
             image?.isTemplate = true
             button.image = image
-            button.toolTip = "共享隐身"
+            button.toolTip = "共享时隐身"
         }
         let menu = NSMenu()
         statusLine.isEnabled = false
@@ -108,7 +108,7 @@ final class StatusController: NSObject {
         open.target = self
         menu.addItem(open)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出共享隐身", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出共享时隐身", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         item.menu = menu

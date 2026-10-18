@@ -1,5 +1,5 @@
 #!/bin/bash
-# 共享隐身 —— 一键安装
+# 共享时隐身 —— 一键安装
 # 屏幕被采集（会议共享 / 录屏 / 部分截图）时，自动隐藏你指定的应用。
 # 源码与说明：https://github.com/iamvicliu/share-hide-apps
 set -euo pipefail
@@ -10,14 +10,14 @@ LAUNCH_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$HOME/Library/Logs"
 APPS_DIR="$HOME/Applications"
 BIN="$APP_SUPPORT/sharewatch"
-WRAPPER="$APP_SUPPORT/共享隐身"
+WRAPPER="$APP_SUPPORT/共享时隐身"
 PLIST="$LAUNCH_DIR/com.sharehideapps.agent.plist"
 LOG="$LOG_DIR/ShareHideApps.log"
 LABEL="com.sharehideapps.agent"
 CONFIG="$APP_SUPPORT/apps.conf"
-CONFIG_APP="$APPS_DIR/共享隐身.app"
+CONFIG_APP="$APPS_DIR/共享时隐身.app"
 
-echo "==> 安装「共享隐身」"
+echo "==> 安装「共享时隐身」"
 mkdir -p "$APP_SUPPORT" "$LAUNCH_DIR" "$LOG_DIR" "$APPS_DIR"
 
 echo "==> 下载后台程序"
@@ -42,8 +42,8 @@ cat > "$CONFIG_APP/Contents/Info.plist" <<'PLIST_EOF'
 <dict>
     <key>CFBundleExecutable</key><string>hideapps-config</string>
     <key>CFBundleIdentifier</key><string>com.sharehideapps.config</string>
-    <key>CFBundleName</key><string>共享隐身</string>
-    <key>CFBundleDisplayName</key><string>共享隐身</string>
+    <key>CFBundleName</key><string>共享时隐身</string>
+    <key>CFBundleDisplayName</key><string>共享时隐身</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>LSMinimumSystemVersion</key><string>12.0</string>
@@ -59,7 +59,7 @@ echo "==> 生成配置文件（默认不隐藏任何应用，由你自己添加�
 if [ ! -f "$CONFIG" ]; then
   cat > "$CONFIG" <<'CONF_EOF'
 # 共享 / 录屏 / 截图时要隐藏的应用，每行一个。
-# 写 bundle id 或应用名；# 后面是备注。推荐用「共享隐身」配置窗口管理。
+# 写 bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。
 # 例：com.tencent.xinWeChat   # 微信
 CONF_EOF
 fi
@@ -97,7 +97,7 @@ open "$CONFIG_APP"
 
 echo ""
 echo "✅ 安装完成，后台已运行、开机自启。"
-echo "   在刚弹出的「共享隐身」窗口里，把要隐藏的应用加进去即可（即时生效）。"
+echo "   在刚弹出的「共享时隐身」窗口里，把要隐藏的应用加进去即可（即时生效）。"
 echo "   配置程序：$CONFIG_APP （以后随时打开管理）"
 echo "   日志：$LOG"
 echo "   卸载：curl -fsSL $REPO_RAW/uninstall.sh | bash"

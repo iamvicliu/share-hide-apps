@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-// 「共享隐身」配置窗口（SwiftUI，极简风）。三种添加方式，最省事的是从「正在运行的应用」点「添加」。
+// 「共享时隐身」配置窗口（SwiftUI，极简风）。三种添加方式，最省事的是从「正在运行的应用」点「添加」。
 // 配置写入 apps.conf，后台 sharewatch 每秒重读，改完即时生效。关窗即退出，不常驻内存。
 
 let configPath = NSHomeDirectory() + "/Library/Application Support/ShareHideApps/apps.conf"
@@ -40,7 +40,7 @@ func saveEntries(_ entries: [Entry]) {
     ensureConfigDir()
     var lines = [
         "# 共享 / 录屏 / 截图时要隐藏的应用，每行一个。",
-        "# 格式：bundle id 或应用名；# 后面是备注。推荐用「共享隐身」配置窗口管理。",
+        "# 格式：bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。",
         "",
     ]
     for e in entries {
@@ -139,7 +139,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("共享隐身").font(.system(size: 18, weight: .bold))
+                Text("共享时隐身").font(.system(size: 18, weight: .bold))
                 Text("共享、录屏或截图时，下面列表里的应用会自动隐藏；结束后点 Dock 图标即可恢复。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -270,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             contentRect: NSRect(origin: .zero, size: size.height > 0 ? size : NSSize(width: 400, height: 660)),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered, defer: false)
-        window.title = "共享隐身"
+        window.title = "共享时隐身"
         window.contentView = hosting
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -283,9 +283,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "隐藏「共享隐身」", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "隐藏「共享时隐身」", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出「共享隐身」", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "退出「共享时隐身」", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
     }
