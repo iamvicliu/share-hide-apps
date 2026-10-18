@@ -20,6 +20,9 @@ curl -fsSL https://raw.githubusercontent.com/iamvicliu/share-hide-apps/main/inst
 
 ## 添加要隐藏的应用
 
+![配置窗口](docs/config-window.png)
+
+
 安装后，在 `~/Applications` 里有一个「共享时隐身」配置程序，随时打开即可管理。三种方式添加：
 
 1. 从「正在运行的应用」列表点「添加」（最省事，想隐藏的应用通常都开着）。

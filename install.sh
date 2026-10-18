@@ -21,7 +21,7 @@ echo "==> 安装「共享时隐身」"
 mkdir -p "$APP_SUPPORT" "$LAUNCH_DIR" "$LOG_DIR" "$APPS_DIR"
 
 echo "==> 下载后台程序"
-curl -fsSL "$REPO_RAW/sharewatch" -o "$BIN"
+curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/sharewatch" -o "$BIN"
 chmod +x "$BIN"
 xattr -dr com.apple.quarantine "$BIN" 2>/dev/null || true
 if ! lipo -info "$BIN" >/dev/null 2>&1; then
@@ -32,8 +32,8 @@ fi
 echo "==> 下载配置程序"
 mkdir -p "$CONFIG_APP/Contents/MacOS"
 mkdir -p "$CONFIG_APP/Contents/Resources"
-curl -fsSL "$REPO_RAW/AppIcon.icns" -o "$CONFIG_APP/Contents/Resources/AppIcon.icns"
-curl -fsSL "$REPO_RAW/hideapps-config" -o "$CONFIG_APP/Contents/MacOS/hideapps-config"
+curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/AppIcon.icns" -o "$CONFIG_APP/Contents/Resources/AppIcon.icns"
+curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/hideapps-config" -o "$CONFIG_APP/Contents/MacOS/hideapps-config"
 chmod +x "$CONFIG_APP/Contents/MacOS/hideapps-config"
 cat > "$CONFIG_APP/Contents/Info.plist" <<'PLIST_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -90,7 +90,16 @@ plutil -lint "$PLIST" >/dev/null
 
 echo "==> 启动后台"
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# bootout 是异步的：等旧服务真正退出再启动，否则 bootstrap 可能报 I/O 错误
+for _ in $(seq 1 20); do launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break; sleep 0.5; done
+for _ in 1 2 3; do
+  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null && break
+  sleep 1
+done
+if ! launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+  echo "后台启动失败，请重新运行安装命令。日志：$LOG" >&2
+  exit 1
+fi
 
 echo "==> 打开配置窗口"
 open "$CONFIG_APP"
