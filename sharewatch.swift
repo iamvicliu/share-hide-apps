@@ -153,6 +153,19 @@ func idleStatus() -> String {
     return readTargets().isEmpty ? "还没添加应用，点「打开配置…」添加" : "待命（共享时自动隐藏）"
 }
 
+// 通过 System Events 把进程的 visible 设为 false。需要「自动化」权限。
+func hideViaSystemEvents(_ app: NSRunningApplication) -> Bool {
+    guard let bid = app.bundleIdentifier, !bid.contains("\"") else { return false }
+    let source = "tell application \"System Events\" to set visible of (first process whose bundle identifier is \"\(bid)\") to false"
+    var error: NSDictionary?
+    NSAppleScript(source: source)?.executeAndReturnError(&error)
+    if let error = error {
+        log("System Events 隐藏失败：\(error[NSAppleScript.errorMessage] ?? "未知错误")")
+        return false
+    }
+    return true
+}
+
 func hideTargets() {
     let targets = readTargets()
     if targets.isEmpty {
@@ -182,6 +195,11 @@ func hideTargets() {
     // hide() 的返回值不可靠（实测返回 false 但随后确实隐藏），改为稍等后看 isHidden。
     for app in hitApps {
         _ = app.hide()
+    }
+    Thread.sleep(forTimeInterval: 0.5)
+    // 部分应用（如 Telegram）对 hide() 无效，用 System Events 的 visible=false 兜底。
+    for app in hitApps where app.isHidden == false {
+        _ = hideViaSystemEvents(app)
     }
     Thread.sleep(forTimeInterval: 0.5)
     let stillVisible = hitApps.filter { !$0.isHidden }.compactMap { $0.localizedName }
