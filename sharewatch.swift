@@ -13,6 +13,14 @@ let logPath = NSHomeDirectory() + "/Library/Logs/ShareHideApps.log"
 let defaultTargets: [String] = []
 let debounceCount = 2
 let pollInterval: TimeInterval = 1.0
+// 设置「共享时隐藏桌面图标」，存在 UserDefaults（com.sharehideapps.app）。
+let hideDesktopKey = "hideDesktopIcons"
+
+// 界面语言：系统首选语言是中文就显示中文，否则显示英文。日志始终用中文。
+let isChinese = Locale.preferredLanguages.first?.hasPrefix("zh") ?? false
+func L(_ zh: String, _ en: String) -> String {
+    return isChinese ? zh : en
+}
 
 let timeFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -94,27 +102,33 @@ func matches(_ app: NSRunningApplication, _ target: String) -> Bool {
 }
 
 // 状态栏图标：菜单栏右上角，显示当前状态，并提供「打开配置」「退出」。
+// 共享中且开了「隐藏桌面图标」时，多一项可以临时显示 / 重新隐藏桌面图标。
 final class StatusController: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let desktopItem = NSMenuItem(title: "", action: #selector(toggleDesktop), keyEquivalent: "")
+    private let desktopSeparator = NSMenuItem.separator()
 
     override init() {
         super.init()
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "共享时隐身")
+            let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: appName)
             image?.isTemplate = true
             button.image = image
-            button.toolTip = "共享时隐身"
+            button.toolTip = appName
         }
         let menu = NSMenu()
         statusLine.isEnabled = false
         menu.addItem(statusLine)
         menu.addItem(.separator())
-        let open = NSMenuItem(title: "打开配置…", action: #selector(openConfig), keyEquivalent: ",")
+        desktopItem.target = self
+        menu.addItem(desktopItem)
+        menu.addItem(desktopSeparator)
+        let open = NSMenuItem(title: L("打开配置…", "Settings…"), action: #selector(openConfig), keyEquivalent: ",")
         open.target = self
         menu.addItem(open)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出共享时隐身", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: L("退出「共享时隐身」", "Quit ShareHide"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         menu.delegate = self
@@ -127,10 +141,30 @@ final class StatusController: NSObject, NSMenuDelegate {
         if !isSharing {
             update(idleStatus())
         }
+        let covering = isSharing && UserDefaults.standard.bool(forKey: hideDesktopKey)
+        desktopItem.isHidden = !covering
+        desktopSeparator.isHidden = !covering
+        desktopItem.title = desktopRevealed
+            ? L("重新隐藏桌面图标", "Hide Desktop Icons Again")
+            : L("显示桌面图标", "Show Desktop Icons")
     }
 
     func update(_ text: String) {
         statusLine.title = text
+    }
+
+    @objc func toggleDesktop() {
+        desktopRevealed ? coverDesktopAgain() : revealDesktop()
+    }
+
+    @objc func revealFromCover() {
+        revealDesktop()
+    }
+
+    // 关掉设置里的开关，配置窗口里的勾选会跟着变。
+    @objc func stopHidingDesktop() {
+        UserDefaults.standard.set(false, forKey: hideDesktopKey)
+        updateDesktopCover()
     }
 
     @objc func openConfig() {
@@ -144,6 +178,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     }
 }
 
+let appName = L("共享时隐身", "ShareHide")
 let isScreenWatcherPresent = loadScreenWatcher()
 let dryRun = CommandLine.arguments.contains("--dry-run")
 
@@ -151,7 +186,9 @@ let dryRun = CommandLine.arguments.contains("--dry-run")
 var statusController: StatusController!
 
 func idleStatus() -> String {
-    return readTargets().isEmpty ? "还没添加应用，点「打开配置…」添加" : "待命（共享时自动隐藏）"
+    return readTargets().isEmpty
+        ? L("还没添加应用，点「打开配置…」添加", "No apps added yet. Choose “Settings…” to add some.")
+        : L("待命（共享时自动隐藏）", "Ready (hides apps while sharing)")
 }
 
 // 通过 System Events 把进程的 visible 设为 false。需要「自动化」权限。
@@ -171,7 +208,7 @@ func hideTargets() {
     let targets = readTargets()
     if targets.isEmpty {
         log("还没配置要隐藏的应用，跳过")
-        statusController.update("正在共享（还没添加应用）")
+        statusController.update(L("正在共享（还没添加应用）", "Sharing (no apps added yet)"))
         return
     }
     // 只看正常的前台应用（有 Dock 图标的），排除输入法、各类 helper 和 Finder 扩展，
@@ -185,10 +222,10 @@ func hideTargets() {
     }
     if hitApps.isEmpty {
         log("目标应用都没在运行（配置：\(targets.joined(separator: "、"))）")
-        statusController.update("正在共享（配置的应用都没在运行）")
+        statusController.update(L("正在共享（配置的应用都没在运行）", "Sharing (none of your apps are running)"))
         return
     }
-    let names = hitApps.map { $0.localizedName ?? $0.bundleIdentifier ?? "?" }.joined(separator: "、")
+    let names = hitApps.map { $0.localizedName ?? $0.bundleIdentifier ?? "?" }.joined(separator: L("、", ", "))
     if dryRun {
         log("[dry-run] 将隐藏：\(names)")
         return
@@ -206,11 +243,109 @@ func hideTargets() {
     let stillVisible = hitApps.filter { !$0.isHidden }.compactMap { $0.localizedName }
     if stillVisible.isEmpty {
         log("已隐藏：\(names)")
-        statusController.update("正在共享，已隐藏：\(names)")
+        statusController.update(L("正在共享，已隐藏：\(names)", "Sharing, hidden: \(names)"))
     } else {
         log("已隐藏：\(names)（未确认隐藏：\(stillVisible.joined(separator: "、"))）")
-        statusController.update("正在共享，已隐藏：\(names)（部分未确认）")
+        statusController.update(L("正在共享，已隐藏：\(names)（部分未确认）", "Sharing, hidden: \(names) (some unconfirmed)"))
     }
+}
+
+// 盖板上右键弹出的菜单。盖板吃掉了桌面的点击和右键，这里给出临时显示桌面的入口。
+final class CoverView: NSView {
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let reveal = NSMenuItem(title: L("显示桌面图标（仅本次）", "Show Desktop Icons (This Time Only)"),
+                                action: #selector(StatusController.revealFromCover), keyEquivalent: "")
+        reveal.target = statusController
+        menu.addItem(reveal)
+        let stop = NSMenuItem(title: L("以后共享时不再隐藏桌面图标", "Stop Hiding Desktop Icons"),
+                              action: #selector(StatusController.stopHidingDesktop), keyEquivalent: "")
+        stop.target = statusController
+        menu.addItem(stop)
+        return menu
+    }
+}
+
+// 共享时用壁纸盖住桌面：每块屏幕放一个铺满壁纸的窗口，层级比桌面图标高一层、比普通窗口低，
+// 所以只挡住桌面图标和小组件，不挡应用窗口。不改访达设置，也不用重启访达，共享画面不会闪。
+final class DesktopCover {
+    private var panels: [NSPanel] = []
+    var isShown: Bool { !panels.isEmpty }
+
+    func show() {
+        guard panels.isEmpty else { return }
+        let level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        for screen in NSScreen.screens {
+            // 不接收点击会让点击落到下面看不见的图标上（可能误开文件），所以盖板自己吃掉点击；
+            // nonactivatingPanel 让点它时不会把本程序切到前台。
+            let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
+                                backing: .buffered, defer: false)
+            panel.level = level
+            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            panel.isReleasedWhenClosed = false
+            panel.hasShadow = false
+            panel.setFrame(screen.frame, display: false)
+            panel.contentView = wallpaperView(for: screen)
+            panel.orderFrontRegardless()
+            panels.append(panel)
+        }
+    }
+
+    func hide() {
+        panels.forEach { $0.orderOut(nil) }
+        panels.removeAll()
+    }
+
+    // 按系统的壁纸缩放方式摆放图片，空出来的地方用壁纸设置里的填充色。
+    private func wallpaperView(for screen: NSScreen) -> NSView {
+        let view = CoverView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        view.wantsLayer = true
+        let options = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
+        let fill = (options[.fillColor] as? NSColor) ?? .black
+        view.layer?.backgroundColor = fill.cgColor
+        if let url = NSWorkspace.shared.desktopImageURL(for: screen), let image = NSImage(contentsOf: url) {
+            view.layer?.contents = image
+            view.layer?.contentsScale = screen.backingScaleFactor
+            let scaling = (options[.imageScaling] as? NSNumber).flatMap { NSImageScaling(rawValue: $0.uintValue) }
+                ?? .scaleProportionallyUpOrDown
+            let clipping = (options[.allowClipping] as? NSNumber)?.boolValue ?? true
+            switch scaling {
+            case .scaleAxesIndependently: view.layer?.contentsGravity = .resize
+            case .scaleNone: view.layer?.contentsGravity = .center
+            default: view.layer?.contentsGravity = clipping ? .resizeAspectFill : .resizeAspect
+            }
+        }
+        return view
+    }
+}
+
+let desktopCover = DesktopCover()
+
+// 用户在这次共享里选了「显示桌面图标」。只管这一次，开始和结束共享时都清掉。
+var desktopRevealed = false
+
+// 共享中、开了设置、这次没选显示，就盖住桌面，否则拿掉。开始 / 结束共享、改设置、屏幕变化时调用。
+func updateDesktopCover() {
+    let want = isSharing && UserDefaults.standard.bool(forKey: hideDesktopKey) && !desktopRevealed
+    if want && !desktopCover.isShown {
+        desktopCover.show()
+        log("已盖住桌面图标")
+    } else if !want && desktopCover.isShown {
+        desktopCover.hide()
+        log("已恢复桌面图标")
+    }
+}
+
+func revealDesktop() {
+    desktopRevealed = true
+    log("用户选择显示桌面图标（仅本次）")
+    updateDesktopCover()
+}
+
+func coverDesktopAgain() {
+    desktopRevealed = false
+    log("用户选择重新隐藏桌面图标")
+    updateDesktopCover()
 }
 
 var isSharing = false
@@ -230,11 +365,15 @@ func tick() {
 
     if !isSharing && trueStreak >= debounceCount {
         isSharing = true
+        desktopRevealed = false
         log("开始共享")
+        updateDesktopCover()
         hideTargets()
     } else if isSharing && falseStreak >= debounceCount {
         isSharing = false
+        desktopRevealed = false
         log("共享结束")
+        updateDesktopCover()
         statusController.update(idleStatus())
     }
 }

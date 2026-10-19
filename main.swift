@@ -40,6 +40,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         timer.tolerance = pollInterval * 0.3
         pollTimer = timer
 
+        // 共享中接上或拔掉显示器、改分辨率时，按新的屏幕重新盖一遍桌面。
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
+            if desktopCover.isShown {
+                desktopCover.hide()
+                desktopCover.show()
+            }
+        }
+
         if wantsWindow {
             showWindow()
         }
@@ -68,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 contentRect: NSRect(origin: .zero, size: size.height > 0 ? size : NSSize(width: 400, height: 660)),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
-            w.title = "共享时隐身"
+            w.title = appName
             w.contentView = hosting
             w.isReleasedWhenClosed = false
             w.delegate = self
@@ -87,16 +96,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
     }
 
-    // 建中文主菜单，否则菜单栏会显示可执行名（英文）
+    // 自己建主菜单（中文或英文），否则菜单项会显示可执行名 ShareHideApps
     private func setupMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "隐藏「共享时隐身」", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        appMenu.addItem(withTitle: L("隐藏「共享时隐身」", "Hide ShareHide"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: L("关闭窗口", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出「共享时隐身」", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L("退出「共享时隐身」", "Quit ShareHide"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
     }

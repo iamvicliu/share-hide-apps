@@ -3,6 +3,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 // 「共享时隐身」配置窗口（SwiftUI，极简风）。三种添加方式，最省事的是从「正在运行的应用」点「添加」。
+// 底部开关「共享时隐藏桌面图标」存在 UserDefaults，改了立即生效。
 // 配置写入 apps.conf，开始共享时重读，改完即时生效。窗口关掉后界面释放，只留菜单栏图标。
 
 struct Entry: Equatable, Identifiable {
@@ -37,8 +38,9 @@ func loadEntries() -> [Entry] {
 func saveEntries(_ entries: [Entry]) {
     ensureConfigDir()
     var lines = [
-        "# 共享 / 录屏时要隐藏的应用，每行一个。",
-        "# 格式：bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。",
+        L("# 共享 / 录屏时要隐藏的应用，每行一个。", "# Apps to hide while sharing or recording, one per line."),
+        L("# 格式：bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。",
+          "# Bundle id or app name; text after # is a note. Easiest to manage in the ShareHide window."),
         "",
     ]
     for e in entries {
@@ -149,67 +151,84 @@ final class Store: ObservableObject {
 struct ContentView: View {
     @StateObject private var store = Store()
     @State private var dropTargeted = false
+    @AppStorage(hideDesktopKey) private var hideDesktop = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("共享时隐身").font(.system(size: 18, weight: .bold))
-                Text("共享或录屏时，下面列表里的应用会自动隐藏；结束后点 Dock 图标即可恢复。")
+                Text(appName).font(.system(size: 18, weight: .bold))
+                Text(L("共享或录屏时，下面列表里的应用会自动隐藏；结束后点 Dock 图标即可恢复。",
+                       "While you share or record your screen, the apps below are hidden automatically. Click their Dock icons to bring them back."))
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader("正在运行的应用", "想隐藏的应用一般都开着，点「添加」就行。")
+                sectionHeader(L("正在运行的应用（\(store.runningApps.count)）", "Running apps (\(store.runningApps.count))"),
+                              L("想隐藏的应用一般都开着，点「添加」就行。", "The apps you want to hide are usually open. Just click Add."))
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(store.runningApps) { app in
                             appRow(icon: app.icon, name: app.name) {
                                 if store.has(app.id) {
-                                    Text("已添加").font(.system(size: 12)).foregroundStyle(.tertiary)
+                                    Text(L("已添加", "Added")).font(.system(size: 12)).foregroundStyle(.tertiary)
                                 } else {
-                                    Button("添加") { store.addCode(app.id, app.name) }.controlSize(.small)
+                                    Button(L("添加", "Add")) { store.addCode(app.id, app.name) }.controlSize(.small)
                                 }
                             }
                             if app.id != store.runningApps.last?.id { Divider() }
                         }
                     }
+                    .padding(.leading, 10).padding(.trailing, 22)
                 }
-                .frame(height: 148)
+                .listBox(height: 129)
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader("没在运行的应用", "把应用从「访达」拖进来，或从「应用程序」里选。")
+                sectionHeader(L("没在运行的应用", "Apps that aren’t running"),
+                              L("把应用从「访达」拖进来，或从「应用程序」里选。", "Drag an app here from Finder, or choose one from Applications."))
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                     .foregroundStyle(dropTargeted ? Color.accentColor : Color.secondary.opacity(0.4))
                     .frame(height: 50)
-                    .overlay(Text(dropTargeted ? "松手添加" : "把应用拖到这里 ⬇")
+                    .overlay(Text(dropTargeted ? L("松手添加", "Drop to add") : L("把应用拖到这里 ⬇", "Drag apps here ⬇"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(dropTargeted ? Color.accentColor : .secondary))
                     .onDrop(of: [UTType.fileURL], isTargeted: $dropTargeted) { handleDrop($0) }
-                Button("从「应用程序」文件夹选择…") { pick() }
+                Button(L("从「应用程序」文件夹选择…", "Choose from Applications…")) { pick() }
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader("已添加（共享时会隐藏这些）", nil)
+                sectionHeader(L("已添加（\(store.entries.count)）", "Added (\(store.entries.count))"),
+                              L("共享时会隐藏这些应用。", "These apps are hidden while you share."))
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         if store.entries.isEmpty {
-                            Text("还没添加。从上面选一个应用吧。")
+                            Text(L("还没添加。从上面选一个应用吧。", "Nothing added yet. Pick an app above."))
                                 .font(.system(size: 12)).foregroundStyle(.tertiary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 10)
                         }
                         ForEach(store.entries) { e in
                             appRow(icon: store.iconFor(e.code), name: e.name) {
-                                Button("移除") { store.remove(e) }.controlSize(.small)
+                                Button(L("移除", "Remove")) { store.remove(e) }.controlSize(.small)
                             }
                             if e.id != store.entries.last?.id { Divider() }
                         }
                     }
+                    .padding(.leading, 10).padding(.trailing, 22)
                 }
-                .frame(height: 108)
+                .listBox(height: 129)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(L("共享时隐藏桌面图标", "Hide desktop icons while sharing"), isOn: $hideDesktop)
+                    .font(.system(size: 13))
+                    .onChange(of: hideDesktop) { _ in updateDesktopCover() }
+                Text(L("用壁纸盖住桌面上的文件和小组件，共享结束后自动恢复。",
+                       "Covers desktop files and widgets with your wallpaper. They come back when sharing ends."))
+                    .font(.system(size: 11)).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
@@ -267,7 +286,24 @@ struct ContentView: View {
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.prompt = "添加"
+        panel.prompt = L("添加", "Add")
         if panel.runModal() == .OK { store.addURLs(panel.urls) }
+    }
+}
+
+// 列表框：圆角底框 + 描边；高度取 3.5 行，最后一行露一半，提示还能往下滚。
+// 内边距加在内容上而不是 ScrollView 外面，右边多留出滚动条的宽度，免得压住按钮。
+extension View {
+    func listBox(height: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+        return alwaysShowScroller()
+            .frame(height: height)
+            .background(shape.fill(Color(nsColor: .controlBackgroundColor)))
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color(nsColor: .separatorColor)))
+    }
+
+    @ViewBuilder func alwaysShowScroller() -> some View {
+        if #available(macOS 13, *) { scrollIndicators(.visible) } else { self }
     }
 }
