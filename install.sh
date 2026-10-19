@@ -1,6 +1,6 @@
 #!/bin/bash
 # 共享时隐身 —— 一键安装
-# 屏幕被采集（会议共享 / 录屏 / 部分截图）时，自动隐藏你指定的应用。
+# 屏幕被采集（会议共享 / 录屏）时，自动隐藏你指定的应用。
 # 源码与说明：https://github.com/iamvicliu/share-hide-apps
 set -euo pipefail
 
@@ -58,7 +58,7 @@ codesign -s - --force --deep "$CONFIG_APP" >/dev/null 2>&1 || true
 echo "==> 生成配置文件（默认不隐藏任何应用，由你自己添加）"
 if [ ! -f "$CONFIG" ]; then
   cat > "$CONFIG" <<'CONF_EOF'
-# 共享 / 录屏 / 截图时要隐藏的应用，每行一个。
+# 共享 / 录屏时要隐藏的应用，每行一个。
 # 写 bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。
 # 例：com.tencent.xinWeChat   # 微信
 CONF_EOF
@@ -110,4 +110,4 @@ echo "   在刚弹出的「共享时隐身」窗口里，把要隐藏的应用�
 echo "   配置程序：$CONFIG_APP （以后随时打开管理）"
 echo "   日志：$LOG"
 echo "   卸载：curl -fsSL $REPO_RAW/uninstall.sh | bash"
-echo "   提示：任何录屏 / 截图 / 会议共享都会触发隐藏；需要时点 Dock 图标恢复。"
+echo "   提示：任何录屏 / 会议共享都会触发隐藏；需要时点 Dock 图标恢复。"

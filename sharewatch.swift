@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 // CGSIsScreenWatcherPresent() 是 CoreGraphics 的私有函数，签名 @convention(c) () -> Bool。
-// 任何程序采集屏幕（会议共享、录屏、部分截图工具）时返回 true。
+// 任何程序持续采集屏幕（会议共享、录屏）时返回 true。
 typealias BoolFn = @convention(c) () -> Bool
 
 let cgPath = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"

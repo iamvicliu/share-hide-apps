@@ -39,7 +39,7 @@ func loadEntries() -> [Entry] {
 func saveEntries(_ entries: [Entry]) {
     ensureConfigDir()
     var lines = [
-        "# 共享 / 录屏 / 截图时要隐藏的应用，每行一个。",
+        "# 共享 / 录屏时要隐藏的应用，每行一个。",
         "# 格式：bundle id 或应用名；# 后面是备注。推荐用「共享时隐身」配置窗口管理。",
         "",
     ]
@@ -75,7 +75,16 @@ final class Store: ObservableObject {
     @Published var entries: [Entry] = loadEntries()
     @Published var runningApps: [RunningApp] = []
 
-    init() { reloadRunning() }
+    init() {
+        reloadRunning()
+        // 窗口开着时有应用启动或退出，自动刷新「正在运行的应用」列表。
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.reloadRunning()
+            }
+        }
+    }
 
     func has(_ code: String) -> Bool {
         entries.contains { $0.code.caseInsensitiveCompare(code) == .orderedSame }
@@ -140,7 +149,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("共享时隐身").font(.system(size: 18, weight: .bold))
-                Text("共享、录屏或截图时，下面列表里的应用会自动隐藏；结束后点 Dock 图标即可恢复。")
+                Text("共享或录屏时，下面列表里的应用会自动隐藏；结束后点 Dock 图标即可恢复。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
