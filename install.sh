@@ -26,7 +26,9 @@ msg() { if [ "$ZH" = 1 ]; then echo "$1"; else echo "$2"; fi; }
 msg "==> 安装「共享时隐身」" "==> Installing ShareHide"
 mkdir -p "$APP_SUPPORT" "$LAUNCH_DIR" "$LOG_DIR" "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-msg "==> 停止正在运行的旧版本" "==> Stopping the running version"
+if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || pgrep -x ShareHideApps >/dev/null || pgrep -x hideapps-config >/dev/null; then
+  msg "==> 停止正在运行的旧版本" "==> Stopping the running version"
+fi
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 # bootout 是异步的：等旧服务真正退出再继续，否则之后 bootstrap 可能报 I/O 错误
 for _ in $(seq 1 20); do launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break; sleep 0.5; done
@@ -44,7 +46,12 @@ if ! lipo -info "$BIN.new" >/dev/null 2>&1; then
   exit 1
 fi
 mv -f "$BIN.new" "$BIN"
-curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/AppIcon.icns" -o "$APP/Contents/Resources/AppIcon.icns"
+# 图标下载失败不影响使用，提示一句继续装
+if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/AppIcon.icns" -o "$APP/Contents/Resources/AppIcon.icns"; then
+  rm -f "$APP/Contents/Resources/AppIcon.icns"
+  msg "⚠️  图标下载失败，程序照常可用，只是暂时没有图标；之后重新运行安装命令即可补上。" \
+      "⚠️  Couldn't download the icon. ShareHide works fine without it; run the install command again to add it." >&2
+fi
 
 # 1.1.x 及更早是两个程序（后台 sharewatch + 配置窗口 hideapps-config），现在合成一个，清掉旧文件。
 rm -f "$APP/Contents/MacOS/hideapps-config" \

@@ -25,6 +25,7 @@ rm -f "$APP_SUPPORT/sharewatch" "$APP_SUPPORT/共享时隐身" "$APP_SUPPORT/共
 rm -rf "$CONFIG_APP"
 # 「共享时隐藏桌面图标」等设置
 defaults delete com.sharehideapps.app 2>/dev/null || true
+rm -f "$HOME/Library/Preferences/com.sharehideapps.app.plist"
 rmdir "$APP_SUPPORT" 2>/dev/null || true
 
 msg "✅ 已卸载。日志保留在：${LOG}（如不需要可手动删除）" "✅ Uninstalled. The log is kept at ${LOG} (delete it if you don't need it)."
