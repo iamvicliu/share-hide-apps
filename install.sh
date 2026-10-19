@@ -21,20 +21,26 @@ echo "==> 安装「共享时隐身」"
 mkdir -p "$APP_SUPPORT" "$LAUNCH_DIR" "$LOG_DIR" "$APPS_DIR"
 
 echo "==> 下载后台程序"
-curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/sharewatch" -o "$BIN"
-chmod +x "$BIN"
-xattr -dr com.apple.quarantine "$BIN" 2>/dev/null || true
-if ! lipo -info "$BIN" >/dev/null 2>&1; then
+# 先下载到临时文件再 mv 替换：直接覆盖正在运行的程序会让系统判定签名失效，
+# 之后读取它的进程（如 lipo）会被杀掉，升级安装因此失败。
+curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/sharewatch" -o "$BIN.new"
+chmod +x "$BIN.new"
+xattr -dr com.apple.quarantine "$BIN.new" 2>/dev/null || true
+if ! lipo -info "$BIN.new" >/dev/null 2>&1; then
+  rm -f "$BIN.new"
   echo "后台程序下载失败，安装中止。" >&2
   exit 1
 fi
+mv -f "$BIN.new" "$BIN"
 
 echo "==> 下载配置程序"
 mkdir -p "$CONFIG_APP/Contents/MacOS"
 mkdir -p "$CONFIG_APP/Contents/Resources"
-curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/AppIcon.icns" -o "$CONFIG_APP/Contents/Resources/AppIcon.icns"
-curl -fsSL --retry 3 --retry-delay 2 "$REPO_RAW/hideapps-config" -o "$CONFIG_APP/Contents/MacOS/hideapps-config"
-chmod +x "$CONFIG_APP/Contents/MacOS/hideapps-config"
+curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/AppIcon.icns" -o "$CONFIG_APP/Contents/Resources/AppIcon.icns"
+# 同上，配置窗口可能正开着，也先下载到临时文件再替换。
+curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/hideapps-config" -o "$CONFIG_APP/Contents/MacOS/hideapps-config.new"
+chmod +x "$CONFIG_APP/Contents/MacOS/hideapps-config.new"
+mv -f "$CONFIG_APP/Contents/MacOS/hideapps-config.new" "$CONFIG_APP/Contents/MacOS/hideapps-config"
 cat > "$CONFIG_APP/Contents/Info.plist" <<'PLIST_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -45,7 +51,7 @@ cat > "$CONFIG_APP/Contents/Info.plist" <<'PLIST_EOF'
     <key>CFBundleName</key><string>共享时隐身</string>
     <key>CFBundleDisplayName</key><string>共享时隐身</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleShortVersionString</key><string>1.1</string>
     <key>LSMinimumSystemVersion</key><string>12.0</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>NSHighResolutionCapable</key><true/>

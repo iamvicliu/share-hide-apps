@@ -11,7 +11,8 @@ CONFIG_APP="$HOME/Applications/共享时隐身.app"
 echo "==> 卸载「共享时隐身」"
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 rm -f "$PLIST"
-rm -f "$APP_SUPPORT/sharewatch" "$APP_SUPPORT/共享时隐身" "$APP_SUPPORT/apps.conf"
+# 「共享隐身」是改名前的旧包装脚本
+rm -f "$APP_SUPPORT/sharewatch" "$APP_SUPPORT/共享时隐身" "$APP_SUPPORT/共享隐身" "$APP_SUPPORT/apps.conf"
 rm -rf "$CONFIG_APP"
 rmdir "$APP_SUPPORT" 2>/dev/null || true
 
