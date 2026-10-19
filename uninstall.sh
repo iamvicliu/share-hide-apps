@@ -29,3 +29,9 @@ rm -f "$HOME/Library/Preferences/com.sharehideapps.app.plist"
 rmdir "$APP_SUPPORT" 2>/dev/null || true
 
 msg "✅ 已卸载。日志保留在：${LOG}（如不需要可手动删除）" "✅ Uninstalled. The log is kept at ${LOG} (delete it if you don't need it)."
+# 勿扰快捷指令只能在「快捷指令」App 里手动删，脚本删不掉
+FOCUS_SHORTCUT="$(shortcuts list 2>/dev/null | grep -xE "共享时隐身 勿扰|ShareHide Do Not Disturb" | head -1)"
+if [ -n "$FOCUS_SHORTCUT" ]; then
+  msg "   不再需要的话，请在「快捷指令」App 里删除「${FOCUS_SHORTCUT}」。" \
+      "   If you no longer need it, delete the \"${FOCUS_SHORTCUT}\" shortcut in the Shortcuts app."
+fi

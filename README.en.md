@@ -5,9 +5,10 @@
 Automatically hides the apps you choose while your screen is being captured, so chat windows don't show up when you share in a meeting, record your screen, or give a demo.
 
 - When sharing or recording starts, the apps you picked are hidden.
-- They don't pop back on their own afterwards; click a Dock icon when you need one.
 - You decide which apps to hide. Nothing is hidden by default.
-- Optional: cover your desktop icons with the wallpaper while sharing; they come back when sharing ends.
+- Press ⌃⌥H to hide them right away, without waiting for sharing to be detected.
+- Optional: cover your desktop icons with the wallpaper while sharing.
+- Optional: turn on Do Not Disturb while sharing; it's turned off when sharing ends.
 
 ## Install
 
@@ -25,15 +26,21 @@ When it finishes, the settings window opens. Add the apps you want to hide; chan
 
 ![Settings window](docs/config-window.en.png)
 
-After installing, choose "Settings…" from the menu bar icon, or open ShareHide in `~/Applications`. There are three ways to add an app:
+After installing, choose "Settings…" from the menu bar icon, or open ShareHide in `~/Applications`. The left list holds the apps to hide; the right list shows the apps that are running. There are three ways to add an app:
 
-1. Click "Add" next to it under "Running apps" (easiest, since the apps you want to hide are usually open).
-2. Drag the app from Finder onto the drop area.
-3. Click "Choose from Applications…" and pick it.
+1. Click "Add" next to it under "Running" on the right (easiest, since the apps you want to hide are usually open).
+2. Drag the app from Finder onto the left list.
+3. Click "Choose from Applications…" above the left list and pick it.
+
+## Hide apps with a shortcut
+
+Press ⌃⌥H and the apps on the left are hidden immediately, without waiting for sharing to be detected. Handy for tidying up just before you share, or when detection doesn't kick in (see "Known limitations" below). The menu bar icon also has "Hide Apps Now".
+
+To change the shortcut, click the shortcut field at the bottom right of the settings window and press a new combination. Click ✕ to clear it, or "Reset to ⌃⌥H" to go back to the default. The shortcut must include ⌃ or ⌥.
 
 ## Hide desktop icons
 
-Turn on "Hide desktop icons while sharing" at the bottom of the settings window. While you share, the files and widgets on your desktop are covered with your wallpaper, and they come back when sharing ends. Turning it on or off takes effect right away. It's off by default.
+Turn on "Hide desktop icons" under "While sharing" at the bottom left of the settings window. While you share, the files and widgets on your desktop are covered with your wallpaper, and they come back when sharing ends. Turning it on or off takes effect right away. It's off by default.
 
 To bring the icons back in the middle of a share, either:
 
@@ -41,6 +48,19 @@ To bring the icons back in the middle of a share, either:
 - Or click the menu bar icon and choose "Show Desktop Icons". Choose it again to hide them.
 
 Showing the icons only lasts for the current share; they're covered again the next time you share. While the desktop is covered, clicking it won't open the files underneath, and you can't drag files onto it.
+
+## Do Not Disturb while sharing
+
+Turn on "Turn on Do Not Disturb" under "While sharing". Do Not Disturb is switched on when sharing starts and off when it ends. It's off by default.
+
+macOS doesn't let regular apps toggle Do Not Disturb directly, so ShareHide uses a shortcut. The first time you turn it on, you'll see "Shortcut not added yet":
+
+1. Click "Add Shortcut…". The Shortcuts app opens.
+2. Click "Add Shortcut" in the window that appears. That's all.
+
+The shortcut is called "ShareHide Do Not Disturb" and contains only two actions, turning Do Not Disturb on or off. You can open it in the Shortcuts app to check.
+
+Note: if you turned on Do Not Disturb yourself before sharing, it's turned off when sharing ends too.
 
 ## Menu bar icon
 
@@ -51,7 +71,6 @@ After installing, an eye-with-a-slash icon appears in the menu bar. Click it to 
 
 ## Notes
 
-- Apps are hidden, not restored automatically: click a Dock icon when you need an app again.
 - Any meeting or recording app that captures the screen triggers hiding; it doesn't matter which one.
 - For extra safety, turn off "Allow notifications when mirroring or sharing the display" in System Settings → Notifications.
 
@@ -75,6 +94,8 @@ Once a second, ShareHide asks the system whether the screen is being continuousl
 
 The settings file is `~/Library/Application Support/ShareHideApps/apps.conf`. It's re-read every time sharing starts, so edits take effect immediately.
 
+The Do Not Disturb shortcut `focus.shortcut` is generated and signed by [tools/make-focus-shortcut.py](tools/make-focus-shortcut.py). ShareHide runs `shortcuts run "ShareHide Do Not Disturb"` with `on` or `off` as input.
+
 ### Build it yourself
 
 `ShareHideApps` in this repo is a prebuilt universal binary (Intel + Apple silicon, ad-hoc signed). The menu bar icon, share detection and settings window all live in this one program. To build it yourself:
@@ -88,6 +109,7 @@ lipo -create sha-arm64 sha-x86 -output ShareHideApps && codesign -s - --force Sh
 ### Known limitations
 
 - It relies on the private macOS API `CGSIsScreenWatcherPresent`, which may need updating after a major system upgrade.
+- Apps are hidden once, at the moment capturing starts. If some program keeps watching the screen (for example an AI assistant's "computer use" feature), the system reports capturing the whole time, so a real share started later won't trigger hiding. Use the shortcut in that case.
 - Hiding desktop icons works by placing a layer of wallpaper over the desktop; Finder settings are not changed. For dynamic wallpapers only one frame can be read, so the cover may look slightly different from what's currently shown.
 
 ---

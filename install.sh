@@ -52,6 +52,12 @@ if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/AppIcon.
   msg "⚠️  图标下载失败，程序照常可用，只是暂时没有图标；之后重新运行安装命令即可补上。" \
       "⚠️  Couldn't download the icon. ShareHide works fine without it; run the install command again to add it." >&2
 fi
+# 勿扰快捷指令（配置窗口里「添加快捷指令…」用），下载失败只影响这个可选功能
+if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REPO_RAW/focus.shortcut" -o "$APP/Contents/Resources/focus.shortcut"; then
+  rm -f "$APP/Contents/Resources/focus.shortcut"
+  msg "⚠️  勿扰快捷指令下载失败，只影响「共享时开启勿扰模式」；之后重新运行安装命令即可补上。" \
+      "⚠️  Couldn't download the Do Not Disturb shortcut. Only \"Turn on Do Not Disturb while sharing\" is affected; run the install command again to add it." >&2
+fi
 
 # 1.1.x 及更早是两个程序（后台 sharewatch + 配置窗口 hideapps-config），现在合成一个，清掉旧文件。
 rm -f "$APP/Contents/MacOS/hideapps-config" \
@@ -70,7 +76,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
     <key>CFBundleName</key><string>共享时隐身</string>
     <key>CFBundleDisplayName</key><string>共享时隐身</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.3</string>
+    <key>CFBundleShortVersionString</key><string>1.4</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>LSHasLocalizedDisplayName</key><true/>
     <key>LSMinimumSystemVersion</key><string>12.0</string>
@@ -152,12 +158,12 @@ if [ "$ZH" = 1 ]; then
   echo "   关掉窗口程序照常工作；以后点菜单栏图标「打开配置…」或打开 $APP 管理。"
   echo "   日志：$LOG"
   echo "   卸载：curl -fsSL $REPO_RAW/uninstall.sh | bash"
-  echo "   提示：任何录屏 / 会议共享都会触发隐藏；需要时点 Dock 图标恢复。"
+  echo "   提示：任何录屏 / 会议共享都会触发隐藏。"
 else
   echo "✅ Installed. ShareHide is running and starts at login; look for the eye icon in the menu bar."
   echo "   In the ShareHide window that just opened, add the apps you want to hide (takes effect right away)."
   echo "   Closing the window keeps it running. Later, choose “Settings…” from the menu bar icon or open $APP."
   echo "   Log: $LOG"
   echo "   Uninstall: curl -fsSL $REPO_RAW/uninstall.sh | bash"
-  echo "   Note: any screen recording or meeting share triggers hiding; click an app's Dock icon to bring it back."
+  echo "   Note: any screen recording or meeting share triggers hiding."
 fi

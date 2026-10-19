@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Carbon
 
 // CGSIsScreenWatcherPresent() 是 CoreGraphics 的私有函数，签名 @convention(c) () -> Bool。
 // 任何程序持续采集屏幕（会议共享、录屏）时返回 true。
@@ -15,6 +16,10 @@ let debounceCount = 2
 let pollInterval: TimeInterval = 1.0
 // 设置「共享时隐藏桌面图标」，存在 UserDefaults（com.sharehideapps.app）。
 let hideDesktopKey = "hideDesktopIcons"
+// 设置「共享时开启勿扰模式」。系统不给普通程序直接开关专注模式的接口，改为运行用户添加的
+// 快捷指令（仓库里的 focus.shortcut，由 tools/make-focus-shortcut.py 生成），输入 on / off。
+let focusKey = "focusWhileSharing"
+let focusShortcutNames = ["共享时隐身 勿扰", "ShareHide Do Not Disturb"]
 
 // 界面语言：系统首选语言是中文就显示中文，否则显示英文。日志始终用中文。
 let isChinese = Locale.preferredLanguages.first?.hasPrefix("zh") ?? false
@@ -108,6 +113,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let desktopItem = NSMenuItem(title: "", action: #selector(toggleDesktop), keyEquivalent: "")
     private let desktopSeparator = NSMenuItem.separator()
+    private let hideNowItem = NSMenuItem(title: "", action: #selector(hideNowFromMenu), keyEquivalent: "")
 
     override init() {
         super.init()
@@ -120,6 +126,9 @@ final class StatusController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         statusLine.isEnabled = false
         menu.addItem(statusLine)
+        menu.addItem(.separator())
+        hideNowItem.target = self
+        menu.addItem(hideNowItem)
         menu.addItem(.separator())
         desktopItem.target = self
         menu.addItem(desktopItem)
@@ -141,6 +150,20 @@ final class StatusController: NSObject, NSMenuDelegate {
         if !isSharing {
             update(idleStatus())
         }
+        // 快捷键真正由 registerHideHotKey 注册，这里只是在菜单里显示出来。
+        // 菜单的快捷键位只能放单个字符，F5、空格这类直接写进标题。
+        let hotKey = HotKey.current
+        hideNowItem.title = L("立即隐藏", "Hide Apps Now")
+        hideNowItem.keyEquivalent = ""
+        hideNowItem.keyEquivalentModifierMask = []
+        if hotKey.code >= 0 {
+            if hotKey.key.count == 1 {
+                hideNowItem.keyEquivalent = hotKey.key.lowercased()
+                hideNowItem.keyEquivalentModifierMask = hotKey.modifiers
+            } else {
+                hideNowItem.title += "  " + hotKey.display
+            }
+        }
         let covering = isSharing && UserDefaults.standard.bool(forKey: hideDesktopKey)
         desktopItem.isHidden = !covering
         desktopSeparator.isHidden = !covering
@@ -151,6 +174,10 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     func update(_ text: String) {
         statusLine.title = text
+    }
+
+    @objc func hideNowFromMenu() {
+        hideNow()
     }
 
     @objc func toggleDesktop() {
@@ -204,11 +231,12 @@ func hideViaSystemEvents(_ app: NSRunningApplication) -> Bool {
     return true
 }
 
+// 菜单里的状态只在共享中显示隐藏结果；没在共享时（按快捷键隐藏）点开菜单会显示待命文字。
 func hideTargets() {
     let targets = readTargets()
     if targets.isEmpty {
         log("还没配置要隐藏的应用，跳过")
-        statusController.update(L("正在共享（还没添加应用）", "Sharing (no apps added yet)"))
+        statusController.update(isSharing ? L("正在共享（还没添加应用）", "Sharing (no apps added yet)") : idleStatus())
         return
     }
     // 只看正常的前台应用（有 Dock 图标的），排除输入法、各类 helper 和 Finder 扩展，
@@ -222,7 +250,9 @@ func hideTargets() {
     }
     if hitApps.isEmpty {
         log("目标应用都没在运行（配置：\(targets.joined(separator: "、"))）")
-        statusController.update(L("正在共享（配置的应用都没在运行）", "Sharing (none of your apps are running)"))
+        if isSharing {
+            statusController.update(L("正在共享（配置的应用都没在运行）", "Sharing (none of your apps are running)"))
+        }
         return
     }
     let names = hitApps.map { $0.localizedName ?? $0.bundleIdentifier ?? "?" }.joined(separator: L("、", ", "))
@@ -243,10 +273,172 @@ func hideTargets() {
     let stillVisible = hitApps.filter { !$0.isHidden }.compactMap { $0.localizedName }
     if stillVisible.isEmpty {
         log("已隐藏：\(names)")
-        statusController.update(L("正在共享，已隐藏：\(names)", "Sharing, hidden: \(names)"))
+        if isSharing {
+            statusController.update(L("正在共享，已隐藏：\(names)", "Sharing, hidden: \(names)"))
+        }
     } else {
         log("已隐藏：\(names)（未确认隐藏：\(stillVisible.joined(separator: "、"))）")
-        statusController.update(L("正在共享，已隐藏：\(names)（部分未确认）", "Sharing, hidden: \(names) (some unconfirmed)"))
+        if isSharing {
+            statusController.update(L("正在共享，已隐藏：\(names)（部分未确认）", "Sharing, hidden: \(names) (some unconfirmed)"))
+        }
+    }
+}
+
+// 全局快捷键（默认 ⌃⌥H，可在配置窗口改）：不等检测，立刻隐藏列表里的应用，可以在开始共享前先按一下。
+// 检测要连续两次（约 2 秒）才确认在共享，这段时间里窗口可能被看到。
+// 用 Carbon 的 RegisterEventHotKey，不需要「辅助功能」权限。
+struct HotKey: Equatable {
+    var code: Int                     // 虚拟键码；-1 表示不用快捷键
+    var modifiers: NSEvent.ModifierFlags
+    var key: String                   // 显示用的键名，如 H、F5、空格
+
+    static let standard = HotKey(code: kVK_ANSI_H, modifiers: [.control, .option], key: "H")
+    static let none = HotKey(code: -1, modifiers: [], key: "")
+
+    static var current: HotKey {
+        let d = UserDefaults.standard
+        guard d.object(forKey: "hotKeyCode") != nil else { return .standard }
+        return HotKey(code: d.integer(forKey: "hotKeyCode"),
+                      modifiers: NSEvent.ModifierFlags(rawValue: UInt(d.integer(forKey: "hotKeyModifiers"))),
+                      key: d.string(forKey: "hotKeyKey") ?? "")
+    }
+
+    func save() {
+        let d = UserDefaults.standard
+        if self == .standard {
+            ["hotKeyCode", "hotKeyModifiers", "hotKeyKey"].forEach { d.removeObject(forKey: $0) }
+            return
+        }
+        d.set(code, forKey: "hotKeyCode")
+        d.set(Int(modifiers.rawValue), forKey: "hotKeyModifiers")
+        d.set(key, forKey: "hotKeyKey")
+    }
+
+    var display: String {
+        if code < 0 { return L("无", "None") }
+        var s = ""
+        if modifiers.contains(.control) { s += "⌃" }
+        if modifiers.contains(.option) { s += "⌥" }
+        if modifiers.contains(.shift) { s += "⇧" }
+        if modifiers.contains(.command) { s += "⌘" }
+        return s + key
+    }
+
+    var carbonModifiers: UInt32 {
+        var m = 0
+        if modifiers.contains(.control) { m |= controlKey }
+        if modifiers.contains(.option) { m |= optionKey }
+        if modifiers.contains(.shift) { m |= shiftKey }
+        if modifiers.contains(.command) { m |= cmdKey }
+        return UInt32(m)
+    }
+
+    // 从按键事件生成；键名用不带修饰键时的字符，这样 ⌥ 和 ⇧ 组合也显示成键帽上的字母
+    init(event: NSEvent) {
+        let special: [Int: String] = [
+            kVK_Space: L("空格", "Space"), kVK_Return: "↩", kVK_Tab: "⇥", kVK_Delete: "⌫", kVK_ForwardDelete: "⌦",
+            kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
+            kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟",
+            kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6",
+            kVK_F7: "F7", kVK_F8: "F8", kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12",
+        ]
+        let code = Int(event.keyCode)
+        self.init(code: code,
+                  modifiers: event.modifierFlags.intersection([.control, .option, .shift, .command]),
+                  key: special[code] ?? (event.characters(byApplyingModifiers: [])?.uppercased() ?? "?"))
+    }
+
+    init(code: Int, modifiers: NSEvent.ModifierFlags, key: String) {
+        self.code = code
+        self.modifiers = modifiers
+        self.key = key
+    }
+}
+
+var hideHotKey: EventHotKeyRef?
+var hotKeyHandlerInstalled = false
+
+// 按当前设置重新注册；返回是否成功（不用快捷键也算成功）
+@discardableResult
+func registerHideHotKey() -> Bool {
+    if !hotKeyHandlerInstalled {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+            hideNow()
+            return noErr
+        }, 1, &spec, nil, nil)
+        hotKeyHandlerInstalled = true
+    }
+    unregisterHideHotKey()
+    let hotKey = HotKey.current
+    guard hotKey.code >= 0 else { return true }
+    let id = EventHotKeyID(signature: OSType(0x5348_4944), id: 1)  // 'SHID'
+    let status = RegisterEventHotKey(UInt32(hotKey.code), hotKey.carbonModifiers, id,
+                                     GetApplicationEventTarget(), 0, &hideHotKey)
+    if status != noErr {
+        log("快捷键 \(hotKey.display) 注册失败（\(status)），可能被别的程序占用")
+        return false
+    }
+    return true
+}
+
+// 录新快捷键时先停用旧的，免得按下去就触发隐藏
+func unregisterHideHotKey() {
+    if let ref = hideHotKey {
+        UnregisterEventHotKey(ref)
+        hideHotKey = nil
+    }
+}
+
+func hideNow() {
+    log("手动立即隐藏")
+    hideTargets()
+}
+
+// 快捷指令在后台串行运行（每次约 1 秒），不卡菜单栏；开、关按顺序执行。
+let focusQueue = DispatchQueue(label: "com.sharehideapps.focus")
+// 这次共享是不是我们开的勿扰：结束时只关自己开的（共享中途才打开设置的，结束时不去关）。
+var focusTurnedOn = false
+
+func runShortcuts(_ args: [String]) -> (status: Int32, output: String) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
+    p.arguments = args
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = pipe
+    do { try p.run() } catch { return (-1, "\(error)") }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    return (p.terminationStatus, String(decoding: data, as: UTF8.self))
+}
+
+// 用户已添加的勿扰快捷指令名（中文或英文名都认），没有就返回 nil。会运行几百毫秒，别在主线程调。
+func installedFocusShortcut() -> String? {
+    let result = runShortcuts(["list"])
+    guard result.status == 0 else { return nil }
+    let names = Set(result.output.split(separator: "\n").map(String.init))
+    return focusShortcutNames.first { names.contains($0) }
+}
+
+func setFocus(_ on: Bool) {
+    if dryRun {
+        log("[dry-run] 将\(on ? "开启" : "关闭")勿扰")
+        return
+    }
+    focusQueue.async {
+        guard let name = installedFocusShortcut() else {
+            log("没找到勿扰快捷指令，跳过（在配置窗口里点「添加快捷指令…」）")
+            return
+        }
+        let input = NSTemporaryDirectory() + "com.sharehideapps.focus.txt"
+        try? (on ? "on" : "off").write(toFile: input, atomically: true, encoding: .utf8)
+        let result = runShortcuts(["run", name, "-i", input])
+        if result.status == 0 {
+            log(on ? "已开启勿扰" : "已关闭勿扰")
+        } else {
+            log("运行快捷指令「\(name)」失败（\(result.status)）：\(result.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
     }
 }
 
@@ -367,12 +559,20 @@ func tick() {
         isSharing = true
         desktopRevealed = false
         log("开始共享")
+        if UserDefaults.standard.bool(forKey: focusKey) {
+            focusTurnedOn = true
+            setFocus(true)
+        }
         updateDesktopCover()
         hideTargets()
     } else if isSharing && falseStreak >= debounceCount {
         isSharing = false
         desktopRevealed = false
         log("共享结束")
+        if focusTurnedOn {
+            focusTurnedOn = false
+            setFocus(false)
+        }
         updateDesktopCover()
         statusController.update(idleStatus())
     }

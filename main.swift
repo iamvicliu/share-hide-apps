@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         log("当前目标：\(targets.isEmpty ? "(未配置，用配置窗口添加)" : targets.joined(separator: "、"))")
 
         statusController = StatusController()
+        registerHideHotKey()
         statusController.update(idleStatus())
         let timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { _ in tick() }
         timer.tolerance = pollInterval * 0.3
@@ -74,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             hosting.layoutSubtreeIfNeeded()
             let size = hosting.fittingSize
             let w = NSWindow(
-                contentRect: NSRect(origin: .zero, size: size.height > 0 ? size : NSSize(width: 400, height: 660)),
+                contentRect: NSRect(origin: .zero, size: size.height > 0 ? size : NSSize(width: 780, height: 560)),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
             w.title = appName
@@ -107,6 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("退出「共享时隐身」", "Quit ShareHide"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: L("窗口", "Window"))
+        windowMenu.addItem(withTitle: L("最小化", "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windowMenu
+        NSApp.windowsMenu = windowMenu
         NSApp.mainMenu = mainMenu
     }
 }
