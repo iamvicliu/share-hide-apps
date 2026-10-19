@@ -3,9 +3,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 // 「共享时隐身」配置窗口（SwiftUI，极简风）。三种添加方式，最省事的是从「正在运行的应用」点「添加」。
-// 配置写入 apps.conf，后台 sharewatch 每秒重读，改完即时生效。关窗即退出，不常驻内存。
-
-let configPath = NSHomeDirectory() + "/Library/Application Support/ShareHideApps/apps.conf"
+// 配置写入 apps.conf，开始共享时重读，改完即时生效。窗口关掉后界面释放，只留菜单栏图标。
 
 struct Entry: Equatable, Identifiable {
     var code: String   // bundle id 或应用名，写进配置、后台据此匹配
@@ -74,16 +72,22 @@ struct RunningApp: Identifiable {
 final class Store: ObservableObject {
     @Published var entries: [Entry] = loadEntries()
     @Published var runningApps: [RunningApp] = []
+    private var observers: [NSObjectProtocol] = []
 
     init() {
         reloadRunning()
         // 窗口开着时有应用启动或退出，自动刷新「正在运行的应用」列表。
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.reloadRunning()
-            }
+            })
         }
+    }
+
+    // 窗口关掉后程序还在跑，要把监听摘掉。
+    deinit {
+        observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
     }
 
     func has(_ code: String) -> Bool {
@@ -91,9 +95,10 @@ final class Store: ObservableObject {
     }
 
     func reloadRunning() {
-        let selfBID = Bundle.main.bundleIdentifier ?? ""
+        // 自己开着窗口时也是普通应用，排除掉。
+        let selfPID = ProcessInfo.processInfo.processIdentifier
         runningApps = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && ($0.bundleIdentifier ?? "") != selfBID }
+            .filter { $0.activationPolicy == .regular && $0.processIdentifier != selfPID }
             .map { app in
                 // localizedName 是 Dock / 访达 显示的本地化名（访达、钉钉、微信），和 Mac 一致
                 RunningApp(id: app.bundleIdentifier ?? (app.localizedName ?? ""),
@@ -266,86 +271,3 @@ struct ContentView: View {
         if panel.runModal() == .OK { store.addURLs(panel.urls) }
     }
 }
-
-let agentLabel = "com.sharehideapps.agent"
-let agentPlist = NSHomeDirectory() + "/Library/LaunchAgents/\(agentLabel).plist"
-
-@discardableResult
-func launchctl(_ args: [String]) -> Int32 {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    p.arguments = args
-    p.standardOutput = FileHandle.nullDevice
-    p.standardError = FileHandle.nullDevice
-    do { try p.run() } catch { return -1 }
-    p.waitUntilExit()
-    return p.terminationStatus
-}
-
-// 从菜单栏「退出」后台后，launchd 不会自动拉起。打开配置窗口时顺手把后台启动起来，
-// 菜单栏图标随之出现。已在运行时 kickstart（不带 -k）什么也不做。
-func startAgent() {
-    let domain = "gui/\(getuid())"
-    if launchctl(["kickstart", "\(domain)/\(agentLabel)"]) == 0 { return }
-    // 服务没加载（比如被 bootout 过），重新加载；plist 不存在说明没装后台，不处理。
-    guard FileManager.default.fileExists(atPath: agentPlist) else { return }
-    launchctl(["bootstrap", domain, agentPlist])
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    var window: NSWindow!
-    var windowClosed = false
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        setupMenu()
-        DispatchQueue.global(qos: .utility).async { startAgent() }
-        let hosting = NSHostingView(rootView: ContentView())
-        hosting.layoutSubtreeIfNeeded()
-        let size = hosting.fittingSize
-        window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size.height > 0 ? size : NSSize(width: 400, height: 660)),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered, defer: false)
-        window.title = "共享时隐身"
-        window.contentView = hosting
-        window.delegate = self
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    // 建中文主菜单，否则菜单栏会显示可执行名（英文）
-    private func setupMenu() {
-        let mainMenu = NSMenu()
-        let appItem = NSMenuItem()
-        mainMenu.addItem(appItem)
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "隐藏「共享时隐身」", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出「共享时隐身」", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu
-        NSApp.mainMenu = mainMenu
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        windowClosed = true
-    }
-
-    // ⌘Q、Dock 里「退出」时窗口还开着：通知后台一起退出，菜单栏图标随之消失。
-    // 只点关闭按钮是先关窗口再退出，后台照常运行。
-    func applicationWillTerminate(_ notification: Notification) {
-        if windowClosed { return }
-        DistributedNotificationCenter.default().postNotificationName(
-            NSNotification.Name("com.sharehideapps.quit"), object: nil, userInfo: nil, deliverImmediately: true)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
-    }
-}
-
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.regular)
-app.run()

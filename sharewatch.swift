@@ -9,7 +9,7 @@ let cgPath = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
 // 配置文件：每行一个要隐藏的应用，可写「应用名」（如 微信 / WeChat / 钉钉）或 bundle id
 // （如 com.tencent.xinWeChat）。# 开头为注释，空行忽略。没配置就什么都不隐藏，由用户自己添加。
 let configPath = NSHomeDirectory() + "/Library/Application Support/ShareHideApps/apps.conf"
-let configAppPath = NSHomeDirectory() + "/Applications/共享时隐身.app"
+let logPath = NSHomeDirectory() + "/Library/Logs/ShareHideApps.log"
 let defaultTargets: [String] = []
 let debounceCount = 2
 let pollInterval: TimeInterval = 1.0
@@ -26,16 +26,22 @@ func timestamp() -> String {
     return timeFormatter.string(from: Date())
 }
 
-// 立即刷新，launchd 会把 stdout/stderr 重定向到文件。
-setvbuf(stdout, nil, _IONBF, 0)
-
+// 直接追加写日志文件：双击打开时不经过 launchd，没有 stdout 重定向。终端里运行时也打印一份。
 func log(_ message: String) {
-    print("\(timestamp()) \(message)")
+    let line = "\(timestamp()) \(message)\n"
+    print(line, terminator: "")
     fflush(stdout)
+    if let h = FileHandle(forWritingAtPath: logPath) {
+        h.seekToEndOfFile()
+        h.write(Data(line.utf8))
+        h.closeFile()
+    } else {
+        try? line.write(toFile: logPath, atomically: false, encoding: .utf8)
+    }
 }
 
 func fail(_ message: String) -> Never {
-    FileHandle.standardError.write(Data(("\(timestamp()) 错误: \(message)\n").utf8))
+    log("错误: \(message)")
     exit(1)
 }
 
@@ -113,9 +119,6 @@ final class StatusController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
         menu.delegate = self
         item.menu = menu
-        // 配置程序被退出（⌘Q、Dock「退出」）时会发这个通知，后台跟着退出。
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(quitFromConfig), name: NSNotification.Name("com.sharehideapps.quit"), object: nil)
     }
 
     // 每次点开菜单都按当前配置刷新待命文字，否则启动后才添加应用，这里还会显示「还没添加应用」。
@@ -131,41 +134,18 @@ final class StatusController: NSObject, NSMenuDelegate {
     }
 
     @objc func openConfig() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: configAppPath))
+        (NSApp.delegate as? AppDelegate)?.showWindow()
     }
 
-    // 从菜单退出后不会被 launchd 立刻拉起，下次登录或打开配置窗口时再启动。
-    // 配置窗口开着的话一并关掉，两边保持一致。
-    @objc func quitFromConfig() {
-        log("配置程序退出，后台一起退出")
-        exit(0)
-    }
-
+    // 和配置窗口里按 ⌘Q 一样，整个程序退出。正常退出不会被 launchd 立刻拉起，
+    // 下次登录或手动打开「共享时隐身」时再启动。
     @objc func quit() {
-        log("从状态栏退出")
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.sharehideapps.config") {
-            app.terminate()
-        }
-        exit(0)
+        NSApp.terminate(nil)
     }
 }
 
 let isScreenWatcherPresent = loadScreenWatcher()
-
-let arguments = Set(CommandLine.arguments.dropFirst())
-let onceMode = arguments.contains("--once")
-let dryRun = arguments.contains("--dry-run")
-
-if onceMode {
-    print(isScreenWatcherPresent() ? "sharing" : "not-sharing")
-    fflush(stdout)
-    exit(0)
-}
-
-log("启动 sharewatch（每 \(Int(pollInterval)) 秒检查一次\(dryRun ? "，dry-run 模式" : "")）")
-log("配置文件：\(configPath)")
-let startTargets = readTargets()
-log("当前目标：\(startTargets.isEmpty ? "(未配置，用配置窗口添加)" : startTargets.joined(separator: "、"))")
+let dryRun = CommandLine.arguments.contains("--dry-run")
 
 // 状态栏控制器在 NSApplication 启动后创建。
 var statusController: StatusController!
@@ -258,11 +238,3 @@ func tick() {
         statusController.update(idleStatus())
     }
 }
-
-let nsApp = NSApplication.shared
-nsApp.setActivationPolicy(.accessory)
-statusController = StatusController()
-statusController.update(idleStatus())
-let pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { _ in tick() }
-pollTimer.tolerance = pollInterval * 0.3
-nsApp.run()

@@ -16,14 +16,14 @@ curl -fsSL https://raw.githubusercontent.com/iamvicliu/share-hide-apps/main/inst
 
 装好后会弹出配置窗口，把要隐藏的应用加进去即可，设置立即生效，之后开机自动运行。
 
-> 介意 `curl | bash` 的话，可以先把 [install.sh](install.sh) 和源码（[sharewatch.swift](sharewatch.swift)、[config-gui.swift](config-gui.swift)）看一遍再运行。
+> 介意 `curl | bash` 的话，可以先把 [install.sh](install.sh) 和源码（[main.swift](main.swift)、[sharewatch.swift](sharewatch.swift)、[config-gui.swift](config-gui.swift)）看一遍再运行。
 
 ## 添加要隐藏的应用
 
 ![配置窗口](docs/config-window.png)
 
 
-安装后，在 `~/Applications` 里有一个「共享时隐身」配置程序，随时打开即可管理。三种方式添加：
+安装后，点菜单栏图标里的「打开配置…」，或打开 `~/Applications` 里的「共享时隐身」，就能管理。三种方式添加：
 
 1. 从「正在运行的应用」列表点「添加」（最省事，想隐藏的应用通常都开着）。
 2. 把应用从「访达」拖进拖拽区。
@@ -31,9 +31,10 @@ curl -fsSL https://raw.githubusercontent.com/iamvicliu/share-hide-apps/main/inst
 
 ## 菜单栏图标
 
-安装后，菜单栏右上角会出现一个眼睛划线图标。点开可以看当前状态、打开配置窗口，或退出后台。
+安装后，菜单栏右上角会出现一个眼睛划线图标。点开可以看当前状态、打开配置窗口，或退出程序。
 
-从菜单退出后，后台会停止，下次登录时自动重新启动。
+- 关掉配置窗口（点左上角 ✕）只是收起窗口，程序照常工作，菜单栏图标还在。
+- 从菜单栏选「退出共享时隐身」，或在配置窗口里按 ⌘Q，才是真正退出。退出后再打开「共享时隐身」即可恢复，下次登录也会自动启动。
 
 ## 注意事项
 
@@ -59,18 +60,16 @@ macOS 12 及以上，Intel 与 Apple 芯片均可。
 
 程序每秒调用一次系统接口判断屏幕是否正在被持续采集（会议共享、录屏会触发），连续两次判定为「正在采集」就隐藏你配置的应用。纯本地运行，不联网、不读取任何窗口内容、不收集数据。
 
-配置文件保存在 `~/Library/Application Support/ShareHideApps/apps.conf`，后台每秒重读，改完即时生效。
+配置文件保存在 `~/Library/Application Support/ShareHideApps/apps.conf`，每次开始共享时重读，改完即时生效。
 
 ### 自己编译
 
-仓库里的 `sharewatch`（后台）和 `hideapps-config`（配置程序）都是预编译的通用二进制（Intel + Apple 芯片，ad-hoc 签名）。想自己编译：
+仓库里的 `ShareHideApps` 是预编译的通用二进制（Intel + Apple 芯片，ad-hoc 签名），菜单栏图标、共享检测和配置窗口都在这一个程序里。想自己编译：
 
 ```bash
-# 后台
-swiftc -O -target arm64-apple-macos12  sharewatch.swift -o sw-arm64
-swiftc -O -target x86_64-apple-macos12 sharewatch.swift -o sw-x86
-lipo -create sw-arm64 sw-x86 -output sharewatch && codesign -s - --force sharewatch
-# 配置程序（同样的方式编译 config-gui.swift 得到 hideapps-config）
+swiftc -O -target arm64-apple-macos12  main.swift sharewatch.swift config-gui.swift -o sha-arm64
+swiftc -O -target x86_64-apple-macos12 main.swift sharewatch.swift config-gui.swift -o sha-x86
+lipo -create sha-arm64 sha-x86 -output ShareHideApps && codesign -s - --force ShareHideApps
 ```
 
 ### 已知限制
