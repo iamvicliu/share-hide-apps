@@ -267,11 +267,38 @@ struct ContentView: View {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+let agentLabel = "com.sharehideapps.agent"
+let agentPlist = NSHomeDirectory() + "/Library/LaunchAgents/\(agentLabel).plist"
+
+@discardableResult
+func launchctl(_ args: [String]) -> Int32 {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    p.arguments = args
+    p.standardOutput = FileHandle.nullDevice
+    p.standardError = FileHandle.nullDevice
+    do { try p.run() } catch { return -1 }
+    p.waitUntilExit()
+    return p.terminationStatus
+}
+
+// 从菜单栏「退出」后台后，launchd 不会自动拉起。打开配置窗口时顺手把后台启动起来，
+// 菜单栏图标随之出现。已在运行时 kickstart（不带 -k）什么也不做。
+func startAgent() {
+    let domain = "gui/\(getuid())"
+    if launchctl(["kickstart", "\(domain)/\(agentLabel)"]) == 0 { return }
+    // 服务没加载（比如被 bootout 过），重新加载；plist 不存在说明没装后台，不处理。
+    guard FileManager.default.fileExists(atPath: agentPlist) else { return }
+    launchctl(["bootstrap", domain, agentPlist])
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
+    var windowClosed = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenu()
+        DispatchQueue.global(qos: .utility).async { startAgent() }
         let hosting = NSHostingView(rootView: ContentView())
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
@@ -281,6 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered, defer: false)
         window.title = "共享时隐身"
         window.contentView = hosting
+        window.delegate = self
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -297,6 +325,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "退出「共享时隐身」", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        windowClosed = true
+    }
+
+    // ⌘Q、Dock 里「退出」时窗口还开着：通知后台一起退出，菜单栏图标随之消失。
+    // 只点关闭按钮是先关窗口再退出，后台照常运行。
+    func applicationWillTerminate(_ notification: Notification) {
+        if windowClosed { return }
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("com.sharehideapps.quit"), object: nil, userInfo: nil, deliverImmediately: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

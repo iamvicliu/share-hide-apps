@@ -88,7 +88,7 @@ func matches(_ app: NSRunningApplication, _ target: String) -> Bool {
 }
 
 // 状态栏图标：菜单栏右上角，显示当前状态，并提供「打开配置」「退出」。
-final class StatusController: NSObject {
+final class StatusController: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
@@ -111,7 +111,19 @@ final class StatusController: NSObject {
         let quit = NSMenuItem(title: "退出共享时隐身", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
+        menu.delegate = self
         item.menu = menu
+        // 配置程序被退出（⌘Q、Dock「退出」）时会发这个通知，后台跟着退出。
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(quitFromConfig), name: NSNotification.Name("com.sharehideapps.quit"), object: nil)
+    }
+
+    // 每次点开菜单都按当前配置刷新待命文字，否则启动后才添加应用，这里还会显示「还没添加应用」。
+    // 共享中的文字（已隐藏哪些应用）不动。
+    func menuWillOpen(_ menu: NSMenu) {
+        if !isSharing {
+            update(idleStatus())
+        }
     }
 
     func update(_ text: String) {
@@ -122,9 +134,18 @@ final class StatusController: NSObject {
         NSWorkspace.shared.open(URL(fileURLWithPath: configAppPath))
     }
 
-    // 从菜单退出后不会被 launchd 立刻拉起，下次登录再自动启动。
+    // 从菜单退出后不会被 launchd 立刻拉起，下次登录或打开配置窗口时再启动。
+    // 配置窗口开着的话一并关掉，两边保持一致。
+    @objc func quitFromConfig() {
+        log("配置程序退出，后台一起退出")
+        exit(0)
+    }
+
     @objc func quit() {
         log("从状态栏退出")
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.sharehideapps.config") {
+            app.terminate()
+        }
         exit(0)
     }
 }
